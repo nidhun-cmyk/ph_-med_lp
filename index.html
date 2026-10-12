@@ -17,6 +17,7 @@ function choice(label,selected,action,value){return `<button type="button" class
 // Relationship-aware age limits. A 16-year minimum generational gap is a
 // practical form-level guardrail, not a statement of UAE law or insurer eligibility.
 const FAMILY_AGE_GAP=16;
+const POLICYHOUSE_BUILD='2026-10-12-age-criteria-v2';
 function ageRange(m){
   let min=(m.relation==='Self'||(m.relation==='Spouse'&&!state.spouseException))?18:0,max=100;
   const self=membersOf('Self')[0];
@@ -36,18 +37,32 @@ function ageOptions(m){const {min,max}=ageRange(m);
   return `<option value="">Select age</option>${options.map(i=>`<option value="${i}" ${m.age===i?'selected':''}>${i} ${i===1?'year':'years'}</option>`).join('')}`;
 }
 function reconcileAges(changedId){
-  // Preserve the most recently changed member and clear any conflicting other selections.
+  // The most recently changed age takes priority. Revalidate everyone else.
   const changed=state.members.find(m=>m.id===changedId);
   if(!changed||changed.age===null)return;
-  for(const member of state.members){
-    if(member.id===changedId||member.age===null)continue;
-    const {min,max}=ageRange(member);
-    if(member.age<min||member.age>max)member.age=null;
+  if(changed.relation==='Self'){
+    state.members.forEach(m=>{
+      if(m.id===changed.id||m.age===null)return;
+      if((m.relation==='Father'||m.relation==='Mother')&&m.age<changed.age+FAMILY_AGE_GAP)m.age=null;
+      if((m.relation==='Son'||m.relation==='Daughter')&&m.age>changed.age-FAMILY_AGE_GAP)m.age=null;
+    });
+  }else if(changed.relation==='Father'||changed.relation==='Mother'||changed.relation==='Son'||changed.relation==='Daughter'){
+    const self=membersOf('Self')[0];
+    if(self&&self.age!==null){
+      const tooYoungParent=(changed.relation==='Father'||changed.relation==='Mother')&&changed.age<self.age+FAMILY_AGE_GAP;
+      const tooOldChild=(changed.relation==='Son'||changed.relation==='Daughter')&&changed.age>self.age-FAMILY_AGE_GAP;
+      if(tooYoungParent||tooOldChild)self.age=null;
+    }
   }
+  state.members.forEach(m=>{
+    if(m.id===changedId||m.age===null)return;
+    const range=ageRange(m);
+    if(m.age<range.min||m.age>range.max)m.age=null;
+  });
 }
 function ageRuleHint(m){
  const {min,max}=ageRange(m);
- if(min>max)return 'No eligible age with current selections; adjust a related age.';
+ if(min>max)return 'No ages available with the ages already selected. Change a related family member’s age first.';
  if(m.relation==='Mother'||m.relation==='Father')return 'At least '+min+' years'+(membersOf('Self').length&&membersOf('Self')[0].age!==null?' (based on Self’s age)':'')+'.';
  if((m.relation==='Son'||m.relation==='Daughter')&&membersOf('Self').length&&membersOf('Self')[0].age!==null)return 'Up to '+max+' years (based on Self’s age).';
  if(m.relation==='Self'&&(min>18||max<100))return 'Allowed range: '+min+'–'+max+' years (based on selected family ages).';
@@ -72,5 +87,5 @@ const payload={source:'PolicyHouse health landing page',enquiryType:'health_insu
 // Future integration example: await fetch('/api/health-enquiry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); handle server response/errors before showing real confirmation.
 console.info('Demo lead structure (medical data excluded from console):', {members:payload.members.length,emirate:payload.emirate,source:payload.source});
 $('wizard').innerHTML=`<div class="success"><div class="success-icon">✓</div><p class="preview-badge">DEMO CONFIRMATION</p><h2>Thank you, ${esc(state.name.trim().split(/\s+/)[0])}!</h2><p>Your enquiry has been completed in this preview. On the live website, your details will be securely submitted and a PolicyHouse advisor will call you.</p><p class="note">No data was transmitted or saved to a CRM in this demo.</p><div class="contact-actions"><button type="button" class="contact-green" id="waAdvisor">WhatsApp Advisor ↗</button><button type="button" class="contact-green" id="callAdvisor">Call an Advisor ☎</button></div><p class="contact-help">Configure PolicyHouse’s official WhatsApp and advisor phone numbers in the HTML before publishing these contact buttons.</p><button class="primary" style="margin-top:20px;max-width:320px" id="restart">Start another enquiry</button></div>`;$('restart').onclick=()=>location.reload();$('waAdvisor').onclick=()=>{if(!/^\d{9,15}$/.test(POLICYHOUSE_WHATSAPP_NUMBER)){alert('WhatsApp contact is not yet configured in this preview.');return}const text='Hello PolicyHouse, I would like assistance with my health insurance enquiry.';window.open('https://wa.me/'+POLICYHOUSE_WHATSAPP_NUMBER+'?text='+encodeURIComponent(text),'_blank','noopener,noreferrer')};$('callAdvisor').onclick=()=>{if(!/^\+?\d{9,15}$/.test(POLICYHOUSE_ADVISOR_NUMBER)){alert('Advisor contact number is not yet configured in this preview.');return}window.location.href='tel:'+POLICYHOUSE_ADVISOR_NUMBER};scrollTop()}
-$('next').onclick=next;$('back').onclick=back;for(const id of ['helpDesktop','helpMobile'])$(id).onclick=e=>{e.preventDefault();alert('Add PolicyHouse’s verified support contact before publishing.')};render();})();
+document.documentElement.dataset.ageBuild=POLICYHOUSE_BUILD; $('next').onclick=next;$('back').onclick=back;for(const id of ['helpDesktop','helpMobile'])$(id).onclick=e=>{e.preventDefault();alert('Add PolicyHouse’s verified support contact before publishing.')};render();})();
 </script></body></html>
